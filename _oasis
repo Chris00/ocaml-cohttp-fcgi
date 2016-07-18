@@ -1,0 +1,33 @@
+OASISFormat: 0.4
+Name:        cohttp_fcgi
+Version:     0.1
+Synopsis:    FastCGi connector for cohttp
+Description: FastCGi connector for cohttp usable with Lwt and Async.
+Authors:     Christophe Troestler <Christophe.Troestler@umons.ac.be>
+Maintainers: Christophe Troestler <Christophe.Troestler@umons.ac.be>
+License:     ISC
+Homepage:    https://github.com/Chris00/ocaml-cohttp-fcgi
+Plugins:     META (0.4), StdFiles (0.4)
+BuildTools:   ocamlbuild
+AlphaFeatures: ocamlbuild_more_args
+
+Library "cohttp_fcgi"
+  Path:		src
+  Modules:      Fcgi_protocol
+  BuildDepends: cohttp, bytes, result, ocplib-endian
+
+
+Document API
+  Title:           API reference for cohttp_fcgi
+  Type:            OCamlbuild (0.4)
+  InstallDir:      $docdir/api
+  BuildTools:      ocamldoc, ocamlbuild
+  XOCamlbuildPath: src
+  XOCamlbuildLibraries: cohttp_fcgi
+  XOCamlbuildExtraArgs:
+    "-docflags '-colorize-code -short-functors -charset utf-8'"
+
+SourceRepository trunk
+  Type:       git
+  Location:   https://github.com/Chris00/ocaml-cohttp-fcgi.git
+  Browser:    https://github.com/Chris00/ocaml-cohttp-fcgi
