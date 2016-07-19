@@ -46,32 +46,38 @@ module type RecordIO = sig
   val write_from : IO.oc -> Bytes.t -> int -> (unit, [`Write_error]) result IO.t
 end
 
+type record_ty =
+  | Management | Begin_request | Abort_Request | End_Request
+  | Params | Stdin | Stdout | Stderr | Data
+  | Get_values | Get_values_result | Unknown
+
+let char_of_ty = function
+  | Management -> '\000'
+  | Begin_request -> '\001'
+  | Abort_Request -> '\002'
+  | End_Request -> '\003'
+  | Params -> '\004'
+  | Stdin -> '\005'
+  | Stdout -> '\006'
+  | Stderr -> '\007'
+  | Data -> '\008'
+  | Get_values -> '\009'
+  | Get_values_result -> '\010'
+  | Unknown -> '\011'
+
+let ty_of_int = [| Management; Begin_request; Abort_Request; End_Request;
+                   Params; Stdin; Stdout; Stderr; Data;
+                   Get_values; Get_values_result; Unknown |]
+
 module Make_RecordIO(IO: IO) = struct
   module IO = IO
 
   let fcgi_version = '\001'
 
-  type ty = | Management | Begin_request | Abort_Request | End_Request
-            | Params | Stdin | Stdout | Stderr | Data
-            | Get_values | Get_values_result | Unknown
-
-  let char_of_ty = function
-    | Management -> '\000'
-    | Begin_request -> '\001'
-    | Abort_Request -> '\002'
-    | End_Request -> '\003'
-    | Params -> '\004'
-    | Stdin -> '\005'
-    | Stdout -> '\006'
-    | Stderr -> '\007'
-    | Data -> '\008'
-    | Get_values -> '\009'
-    | Get_values_result -> '\010'
-    | Unknown -> '\011'
-
-  let ty_of_int = [| Management; Begin_request; Abort_Request; End_Request;
-                     Params; Stdin; Stdout; Stderr; Data;
-                     Get_values; Get_values_result; Unknown |]
+  type ty = record_ty =
+    | Management | Begin_request | Abort_Request | End_Request
+    | Params | Stdin | Stdout | Stderr | Data
+    | Get_values | Get_values_result | Unknown
 
   let ( >>= ) = IO.( >>= )
 
