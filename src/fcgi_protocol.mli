@@ -94,18 +94,23 @@ module type RecordIO = sig
   (** ID of the last read FastCGI record. *)
 
 
-  type oc
-  (** Represent an output channel on which FastCGI records can be sent. *)
+  val create_record : unit -> Bytes.t
+  (** [create_record()] allocates a byte sequence that is long enough
+      to hold any FastCGI record.  You should only directly modify the
+      data portion of it which starts at byte 8. *)
 
-  val make_output : IO.oc -> oc
-  (** [make_output oc] allocates the resources to send FastCGI records
-      to [oc]. *)
+  val set_type : Bytes.t -> ty -> unit
+  val set_id : Bytes.t -> int -> unit
 
-  val set_type : oc -> ty -> unit
-  val set_id : oc -> int -> unit
-
-  val send : oc -> (unit, [`Write_error]) result IO.t
-  (** [send oc] sends the FastCGI record held in [oc]. *)
+  val write_from : IO.oc -> Bytes.t -> int
+                   -> (unit, [`Write_error]) result IO.t
+  (** [write_from oc buf data_len] sends the FastCGI record in [buf]
+       with data length [data_len] to [oc].  This function takes care
+       of writing the length to [buf] and setting the proper amount of
+       padding.  It is recommended that you use {!create_record} to
+       create [buf] because it must be long enough to hold the padding
+       in addition to the data.  *)
+                                             ;;
 end
 
 module Make_RecordIO(IO: IO) : RecordIO with module IO = IO

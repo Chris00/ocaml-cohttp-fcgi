@@ -18,6 +18,7 @@ module type IO = sig
   type ic
   type oc
 
+  (* FIXME: what about these functions raisong exceptions? *)
   val read_into : ic -> Bytes.t -> int -> int -> int t
   val write_from : oc -> Bytes.t -> int -> int -> int t
   val flush : oc -> unit t
@@ -39,11 +40,10 @@ module type RecordIO = sig
   val input_type : ic -> ty
   val id : ic -> int
 
-  type oc
-  val make_output : IO.oc -> oc
-  val set_type : oc -> ty -> unit
-  val set_id : oc -> int -> unit
-  val send : oc -> (unit, [`Write_error]) result IO.t
+  val create_record : unit -> Bytes.t
+  val set_type : Bytes.t -> ty -> unit
+  val set_id : Bytes.t -> int -> unit
+  val write_from : IO.oc -> Bytes.t -> int -> (unit, [`Write_error]) result IO.t
 end
 
 module Make_RecordIO(IO: IO) = struct
@@ -122,34 +122,29 @@ module Make_RecordIO(IO: IO) = struct
     IO.return(Ok content_length)
 
 
-  type oc = {
-      oc: IO.oc;
-      buf: Bytes.t; (* output buffer *)
-      mutable ofs: int; (* Output _data_ offset; data length = oofs - 8 *)
-    }
-
-  let make_output oc =
+  let create_record () =
     let buf = Bytes.create (8 + data_len_max) in
-    Bytes.set buf 0 fcgi_version;  (* never modified *)
-    { oc;  buf;  ofs = 8 }
+    Bytes.set buf 0 fcgi_version;  (* should never be modified *)
+    buf
 
-  let set_type oc ty =
-    Bytes.set oc.buf 1 (char_of_ty ty)
+  let set_type buf ty =
+    Bytes.set buf 1 (char_of_ty ty)
 
-  let set_id oc id =
+  let set_id buf id =
     assert(0 <= id && id <= 0xFFFF);
-    BE.set_int16 oc.buf 2 id
+    BE.set_int16 buf 2 id
 
-  let send oc =
-    let content_length = oc.ofs - 8 in
-    if content_length <= 0 then IO.return(Ok()) (* nothing to do *)
+  let write_from oc buf data_len =
+    assert(data_len <= 0xFFFF);
+    if data_len <= 0 then IO.return(Ok()) (* nothing to do *)
     else (
-      let rem = content_length land 0x7 (* = mod 8 *) in
+      let rem = data_len land 0x7 (* = mod 8 *) in
       let padding_length = if rem = 0 then 0 else 8 - rem in
-      BE.set_int16 oc.buf 4 content_length;
-      BE.set_int8 oc.buf 6 padding_length;
-      let to_write = 8 + content_length + padding_length in
-      IO.write_from oc.oc oc.buf 0 to_write >>= fun written ->
+      BE.set_int16 buf 4 data_len;
+      BE.set_int8 buf 6 padding_length;
+      let to_write = 8 + data_len + padding_length in
+      IO.write_from oc buf 0 to_write >>= fun written ->
+      IO.flush oc >>= fun () ->
       IO.return(if written <> to_write then Error `Write_error
                 else Ok())
     )
@@ -192,13 +187,12 @@ module Server(P: RecordIO) = struct
 
   type t = {
       ic: P.ic;
-      oc: P.oc;
+      oc: IO.oc;
     }
 
 
   let handle_connection ?(keep_conn=false) ic oc =
     let ic = P.make_input ic in
-    let oc = P.make_output oc in
     { ic; oc }
 
   let get_values t names =
