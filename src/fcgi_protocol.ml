@@ -34,11 +34,10 @@ module type RecordIO = sig
 
   type ic
   val make_input : IO.ic -> ic
-  val read : ic -> (unit, [`EOF]) result IO.t
+  val create_data : unit -> Bytes.t
+  val read_into : ic -> Bytes.t -> (int, [`EOF]) result IO.t
   val input_type : ic -> ty
   val id : ic -> int
-  val data : ic -> Bytes.t
-  val length : ic -> int
 
   type oc
   val make_output : IO.oc -> oc
@@ -86,21 +85,19 @@ module Make_RecordIO(IO: IO) = struct
       mutable ty: ty;  (* input type, cache for easy access *)
       mutable id: int; (* input ID, cache for easy access *)
       head: Bytes.t; (* buffer for the 8 first bytes of the FCGI record *)
-      data: Bytes.t; (* data + padding buffer *)
-      mutable length: int; (* _data_ length *)
       mutable closed: bool;
     }
 
   let input_type ic = ic.ty
   let id ic = ic.id
-  let data ic = ic.data
-  let length ic = ic.length
 
   let make_input ic =
     let head = Bytes.create 8 in
-    let data = Bytes.create data_len_max in
     { ty = Unknown;  id = (-1);
-      ic;  head;  data;  length = 0;  closed = false  }
+      ic;  head;  closed = false  }
+
+  let create_data () =
+    Bytes.create data_len_max
 
   let rec really_read ic buf ~ofs len =
     if len <= 0 then IO.return(Ok()) (* even if closed *)
@@ -110,19 +107,19 @@ module Make_RecordIO(IO: IO) = struct
       else IO.return(Error `EOF) (* Input EOF; desired [len] > 0 *)
     )
 
-  (* FIXME: we want to be able to choose the buffer according to the ID. *)
   (* WARNING: you do not want several [ic] on a single [IO.ic] because
      there are several reads and you do not want the header to be read
      by some function and the data by another. *)
-  let read ic =
+  let read_into ic data =
     really_read ic.ic ic.head ~ofs:0 8 >>=? fun () ->
     let ty = BE.get_uint8 ic.head 1 in
     ic.ty <- (if ty <= 11 then ty_of_int.(ty) else Unknown);
     ic.id <- BE.get_uint16 ic.head 2;
     let content_length = BE.get_uint16 ic.head 4 in
-    ic.length <- content_length;
     let padding_length = BE.get_uint8 ic.head 6 in
-    really_read ic.ic ic.data ~ofs:0 (content_length + padding_length)
+    really_read ic.ic data ~ofs:0 (content_length + padding_length)
+    >>=? fun () ->
+    IO.return(Ok content_length)
 
 
   type oc = {
@@ -162,10 +159,9 @@ end
 module type CLIENT = sig
   module IO : IO
 
-
-
   val handle_connection :
     ?max_reqs: int ->
+    ?values:(string -> string option) ->
     (Cohttp.Request.t -> Cohttp_lwt_body.t ->
      (Cohttp.Response.t * Cohttp_lwt_body.t) IO.t) ->
     IO.ic -> IO.oc -> unit IO.t
@@ -174,10 +170,9 @@ end
 module Client(P: RecordIO) = struct
   module IO = P.IO
 
-  type t
 
 
-  let handle_connection ?(max_reqs=1) f ic oc =
+  let handle_connection ?(max_reqs=1) ?(values=fun _ -> None) f ic oc =
 
     IO.return()
 end

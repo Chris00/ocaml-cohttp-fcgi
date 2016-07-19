@@ -74,25 +74,24 @@ module type RecordIO = sig
   (** [make_input ic] allocates the resources to read FastCGI records
       on [ic]. *)
 
-  val read : ic -> (unit, [`EOF]) result IO.t
-  (** [read ic] gets the next record on input, overwriting the current
-      record held in [ic].  No more bytes than those making the
-      FastCGI record are read from the underlying [IO.ic] channel.
-      That means that several [ic] may be created *)
+  val create_data : unit -> Bytes.t
+  (** Create a byte sequence long enough to hold the data of any
+      FastCGI record. *)
+
+  val read_into : ic -> Bytes.t -> (int, [`EOF]) result IO.t
+  (** [read ic data] gets the next record on input, puts its data into
+      [data] and returns its length.  [data] is supposed be long
+      enough to hold any incoming record (it is recommended that you
+      use {!create_data} to create it).  As [read_into] performs
+      several reads on the underlying channel [IO.ic], you must be
+      careful that no other concurrent call on the same channel
+      is placed. *)
 
   val input_type : ic -> ty
   (** Type of the last read FastCGI record. *)
 
   val id : ic -> int
   (** ID of the last read FastCGI record. *)
-
-  val data : ic -> Bytes.t
-  (** [data ic] return the byte sequence that contains the data of the
-      last read FastCGI record.  While the returned value may be
-      longer, only the bytes at indices 0 .. [length ic] are valid.  *)
-
-  val length : ic -> int
-  (** {i Data} length of the last read FastCGI record. *)
 
 
   type oc
@@ -117,6 +116,7 @@ module type CLIENT = sig
 
   val handle_connection :
     ?max_reqs: int ->
+    ?values:(string -> string option) ->
     (Cohttp.Request.t -> Cohttp_lwt_body.t ->
      (Cohttp.Response.t * Cohttp_lwt_body.t) IO.t) ->
     IO.ic -> IO.oc -> unit IO.t
