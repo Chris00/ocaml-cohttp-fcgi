@@ -186,12 +186,47 @@ let rec map_name_value buf ofs len f nv =
       let ofs_next = ofs_value + v_len in
       if ofs_next > len then nv
       else (
-        let name = String.uppercase_ascii(Bytes.sub_string buf ofs n_len) in
+        let name = String.uppercase(Bytes.sub_string buf ofs n_len) in
         let value = Bytes.sub_string buf ofs_value v_len in
         let nv = f name value :: nv in
         map_name_value buf ofs_next len f nv
       )
     )
+  )
+
+(** Encode [length] according to the FastCGI spec, set it in [buf] at
+    position [ofs] and return the new offset.  Raise an exception if
+    [buf] is not long enough or if [length] does not fit the FastCGI
+    format. *)
+let encode_length_exn buf ofs len length =
+  if length < 0x80 then (
+    if ofs >= len then failwith "encode_length_exn";
+    BE.set_int8 buf ofs length;
+    ofs + 1
+  )
+  else if length < 0x8000_0000 then (
+    if ofs + 3 >= len then failwith "encode_length_exn";
+    BE.set_int16 buf ofs ((length lsr 16) lor 0x8000);
+    BE.set_int16 buf (ofs + 2) (length land 0xFFFF);
+    ofs + 4
+  )
+  else failwith "encode_length_exn"
+
+(** Encode the name-value pair [(k,v)] to [buf] at position [ofs] and
+    return the offset for the next value.  If there is not enough
+    space in [buf], an exception is raised. *)
+let add_name_val_exn buf ofs len k v =
+  let k_len = String.length k in
+  let v_len = String.length v in
+  let ofs = encode_length_exn buf ofs len k_len in
+  let ofs = encode_length_exn buf ofs len v_len in
+  let v_ofs = ofs + k_len in
+  let next_ofs = v_ofs + v_len in
+  if next_ofs > len then failwith "add_name_val_exn"
+  else (
+    String.blit k 0 buf ofs k_len;
+    String.blit v 0 buf v_ofs v_len;
+    next_ofs
   )
 
 
