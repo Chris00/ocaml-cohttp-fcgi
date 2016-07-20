@@ -34,16 +34,23 @@ module type RecordIO = sig
     ('a, 'b) result IO.t -> ('a -> ('c, 'b) result IO.t) -> ('c, 'b) result IO.t
 
   type ic
+  type head = {
+      ty: ty;
+      id: int;
+      content_length: int;
+      padding_length: int;
+    }
   val make_input : IO.ic -> ic
   val create_data : unit -> Bytes.t
-  val read_into : ic -> Bytes.t -> (int, [`EOF]) result IO.t
+  val read_head : ic -> (head, [`EOF]) result IO.t
+  val read_into : ic -> head -> Bytes.t -> (unit, [`EOF]) result IO.t
   val input_type : ic -> ty
   val id : ic -> int
 
   val create_record : unit -> Bytes.t
   val set_type : Bytes.t -> ty -> unit
   val set_id : Bytes.t -> int -> unit
-  val write_from : IO.oc -> Bytes.t -> data_len:int
+  val write_from : IO.oc -> Bytes.t -> content_length:int
                    -> (unit, [`Write_error]) result IO.t
 end
 
@@ -87,23 +94,24 @@ module Make_RecordIO(IO: IO) = struct
   let ( >>=? ) m f =
     m >>= (function Ok v -> f v | Error _ as e -> IO.return e)
 
-  let data_len_max = 0xFFFF + 0xFF
+  let data_len_max = 0xFFFF + 0xFF (* content + padding *)
 
   type ic = {
       ic: IO.ic;
-      mutable ty: ty;  (* input type, cache for easy access *)
-      mutable id: int; (* input ID, cache for easy access *)
       head: Bytes.t; (* buffer for the 8 first bytes of the FCGI record *)
       mutable closed: bool;
     }
 
-  let input_type ic = ic.ty
-  let id ic = ic.id
+  type head = {
+      ty: ty;
+      id: int;
+      content_length: int;
+      padding_length: int;
+    }
 
   let make_input ic =
     let head = Bytes.create 8 in
-    { ty = Unknown;  id = (-1);
-      ic;  head;  closed = false  }
+    { ic;  head;  closed = false  }
 
   let create_data () =
     Bytes.create data_len_max
@@ -116,20 +124,16 @@ module Make_RecordIO(IO: IO) = struct
       else IO.return(Error `EOF) (* Input EOF; desired [len] > 0 *)
     )
 
-  (* WARNING: you do not want several [ic] on a single [IO.ic] because
-     there are several reads and you do not want the header to be read
-     by some function and the data by another. *)
-  let read_into ic data =
+  let read_head ic =
     really_read ic.ic ic.head ~ofs:0 8 >>=? fun () ->
-    let ty = BE.get_uint8 ic.head 1 in
-    ic.ty <- ty_of_int ty;
-    ic.id <- BE.get_uint16 ic.head 2;
+    let ty = ty_of_int(BE.get_uint8 ic.head 1) in
+    let id = BE.get_uint16 ic.head 2 in
     let content_length = BE.get_uint16 ic.head 4 in
     let padding_length = BE.get_uint8 ic.head 6 in
-    really_read ic.ic data ~ofs:0 (content_length + padding_length)
-    >>=? fun () ->
-    IO.return(Ok content_length)
+    IO.return(Ok {ty; id; content_length; padding_length})
 
+  let read_into ic head data =
+    really_read ic.ic data ~ofs:0 (head.content_length + head.padding_length)
 
   let create_record () =
     let buf = Bytes.create (8 + data_len_max) in

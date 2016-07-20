@@ -72,27 +72,30 @@ module type RecordIO = sig
       records can be read. *)
 
   val make_input : IO.ic -> ic
-  (** [make_input ic] allocates the resources to read FastCGI records
-      on [ic]. *)
+  (** [make_input ic] allocates the resources to read FastCGI "heads"
+      of records on [ic]. *)
+
+  type head = {
+      ty: ty;  (** FastCGI record type *)
+      id: int; (** FastCGI record ID (0 = management record) *)
+      content_length: int;  (** length of the content of the record *)
+      padding_length: int; (** length of the padding *)
+    }
+
+  val read_head : ic -> (head, [`EOF]) result IO.t
+  (** Read the "head" of the next FastCGI record. *)
+
+  val read_into : ic -> head -> Bytes.t -> (unit, [`EOF]) result IO.t
+  (** [read ic head data] gets the data of the next record on [ic]
+      whose characteristics are given by [head] and puts it into
+      [data].  [data] is supposed be long enough to hold any incoming
+      record (it is recommended that you use {!create_data} to create
+      it).  The important content in [data] is in the range [0]
+      .. [head.content_length - 1].  *)
 
   val create_data : unit -> Bytes.t
   (** Create a byte sequence long enough to hold the data of any
       FastCGI record. *)
-
-  val read_into : ic -> Bytes.t -> (int, [`EOF]) result IO.t
-  (** [read ic data] gets the next record on input, puts its data into
-      [data] and returns its length.  [data] is supposed be long
-      enough to hold any incoming record (it is recommended that you
-      use {!create_data} to create it).  As [read_into] performs
-      several reads on the underlying channel [IO.ic], you must be
-      careful that no other concurrent call on the same channel
-      is placed. *)
-
-  val input_type : ic -> ty
-  (** Type of the last read FastCGI record. *)
-
-  val id : ic -> int
-  (** ID of the last read FastCGI record. *)
 
 
   val create_record : unit -> Bytes.t
