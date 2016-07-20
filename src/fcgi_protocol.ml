@@ -136,9 +136,7 @@ module Make_RecordIO(IO: IO) = struct
     really_read ic.ic data ~ofs:0 (head.content_length + head.padding_length)
 
   let create_record () =
-    let buf = Bytes.create (8 + data_len_max) in
-    Bytes.set buf 0 fcgi_version;  (* should never be modified *)
-    buf
+    Bytes.create (8 + data_len_max)
 
   let set_type buf ty =
     Bytes.set buf 1 (char_of_ty ty)
@@ -151,6 +149,7 @@ module Make_RecordIO(IO: IO) = struct
     assert(content_length <= 0xFFFF);
     if content_length <= 0 then IO.return(Ok()) (* nothing to do *)
     else (
+      Bytes.set buf 0 fcgi_version;
       let rem = content_length land 0x7 (* = mod 8 *) in
       let padding_length = if rem = 0 then 0 else 8 - rem in
       BE.set_int16 buf 4 content_length;
