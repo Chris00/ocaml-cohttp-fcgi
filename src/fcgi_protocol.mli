@@ -106,7 +106,7 @@ module type RecordIO = sig
   val set_type : Bytes.t -> ty -> unit
   val set_id : Bytes.t -> int -> unit
 
-  val write_from : IO.oc -> Bytes.t -> data_len:int
+  val write_from : IO.oc -> Bytes.t -> content_length:int
                    -> (unit, [`Write_error]) result IO.t
   (** [write_from oc buf data_len] sends the FastCGI record in [buf]
        with data length [data_len] to [oc].  This function takes care

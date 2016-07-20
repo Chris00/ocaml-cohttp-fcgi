@@ -147,15 +147,15 @@ module Make_RecordIO(IO: IO) = struct
     assert(0 <= id && id <= 0xFFFF);
     BE.set_int16 buf 2 id
 
-  let write_from oc buf ~data_len =
-    assert(data_len <= 0xFFFF);
-    if data_len <= 0 then IO.return(Ok()) (* nothing to do *)
+  let write_from oc buf ~content_length =
+    assert(content_length <= 0xFFFF);
+    if content_length <= 0 then IO.return(Ok()) (* nothing to do *)
     else (
-      let rem = data_len land 0x7 (* = mod 8 *) in
+      let rem = content_length land 0x7 (* = mod 8 *) in
       let padding_length = if rem = 0 then 0 else 8 - rem in
-      BE.set_int16 buf 4 data_len;
+      BE.set_int16 buf 4 content_length;
       BE.set_int8 buf 6 padding_length;
-      let to_write = 8 + data_len + padding_length in
+      let to_write = 8 + content_length + padding_length in
       IO.write_from oc buf 0 to_write >>= fun written ->
       IO.flush oc >>= fun () ->
       IO.return(if written <> to_write then Error `Write_error
