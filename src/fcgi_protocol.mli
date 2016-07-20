@@ -126,8 +126,21 @@ module Make_RecordIO(IO: IO) : RecordIO with module IO = IO
 module type CLIENT = sig
   module IO : IO
 
+  (** Configuration of the client.  This is mainly to be able to
+      respond to requests from the server about the capabilities of
+      the client. *)
+  type config = {
+      max_conns: int; (** The maximum number of concurrent transport
+                          connections the application will accept. *)
+      max_reqs: int;  (** The maximum number of concurrent requests
+                          the application will accept.  This is a per
+                          application, not per connection setting. *)
+      mpxs_conns: bool; (** Whether the application accepts to handle
+                            concurrent requests over each connection. *)
+    }
+
   val handle_connection :
-    ?max_reqs: int ->
+    ?config: config ->
     (Cohttp.Request.t -> Cohttp_lwt_body.t ->
      (Cohttp.Response.t * Cohttp_lwt_body.t) IO.t) ->
     IO.ic -> IO.oc -> unit IO.t

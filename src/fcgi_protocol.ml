@@ -156,6 +156,8 @@ module Make_RecordIO(IO: IO) = struct
     )
 end
 
+let management_id = 0
+
 (** Gets the length of a name or value and the offset of the next
     entry.  This new offset is set to [len] if the range [ofs] .. [ofs
     + len - 1] is not large enough. *)
@@ -233,8 +235,14 @@ let add_name_val_exn buf ofs len k v =
 module type CLIENT = sig
   module IO : IO
 
+  type config = {
+      max_conns: int;
+      max_reqs: int;
+      mpxs_conns: bool;
+    }
+
   val handle_connection :
-    ?max_reqs: int ->
+    ?config: config ->
     (Cohttp.Request.t -> Cohttp_lwt_body.t ->
      (Cohttp.Response.t * Cohttp_lwt_body.t) IO.t) ->
     IO.ic -> IO.oc -> unit IO.t
@@ -243,11 +251,72 @@ end
 module Client(P: RecordIO) = struct
   module IO = P.IO
 
+  let ( >>= ) = IO.( >>= )
+  let ( >>=? ) = P.( >>=? )
 
+  type config = {
+      max_conns: int;
+      max_reqs: int;
+      mpxs_conns: bool;
+    }
 
-  let handle_connection ?(max_reqs=1) ?(values=fun _ -> None) f ic oc =
+  (* Minimal capabilities. *)
+  let default_config = { max_conns = 1;  max_reqs = 1;  mpxs_conns = false }
 
-    IO.return()
+  let rec set_config_pairs config nv buf ofs len =
+    match nv with
+    | name :: tl ->
+       (try
+          if String.equal name "FCGI_MAX_CONNS" then
+            let ofs = add_name_val_exn buf ofs len "FCGI_MAX_CONNS"
+                        (string_of_int config.max_conns) in
+            set_config_pairs config tl buf ofs len
+          else if String.equal name "FCGI_MAX_REQS" then
+            let ofs = add_name_val_exn buf ofs len "FCGI_MAX_REQS"
+                        (string_of_int config.max_reqs) in
+            set_config_pairs config tl buf ofs len
+          else if String.equal name "FCGI_MPXS_CONNS" then
+            let ofs = add_name_val_exn buf ofs len "FCGI_MPXS_CONNS"
+                        (if config.mpxs_conns then "1" else "0") in
+            set_config_pairs config tl buf ofs len
+          else (* skip not understood name *)
+            set_config_pairs config tl buf ofs len
+        with _ -> (* problems with name-value pair.  Skip it *)
+          set_config_pairs config tl buf ofs len)
+    | [] -> ofs
+
+  let keep_name name _ = name
+
+  let reply_to_get_values config head ic oc buf =
+    P.read_into ic head buf >>=? fun () ->
+    let nv = map_name_value buf 0 head.P.content_length keep_name [] in
+    P.set_id buf management_id;
+    P.set_type buf P.Get_values_result;
+    let ofs = set_config_pairs config nv buf 8 (Bytes.length buf) in
+    P.write_from oc buf ~content_length:(ofs - 8)
+
+  let rec handle_connection_loop config f ic oc buf =
+    P.read_head ic >>=? fun head ->
+    if head.P.id = 0 then (
+      (* Management record *)
+      match head.P.ty with
+      | P.Get_values ->
+         reply_to_get_values config head ic oc buf >>=? fun () ->
+         handle_connection_loop config f ic oc buf
+      | _ -> send_unknown_type oc buf head.P.ty
+    )
+    else (
+      handle_connection_loop config f ic oc buf
+    )
+
+  let handle_connection ?(config=default_config) f ic oc =
+    let ic = P.make_input ic in
+    let buf = P.create_record() in
+    handle_connection_loop config f ic oc buf >>= function
+    | Ok _ -> assert false (* should not exit normally *)
+    | Error(`EOF | `Write_error) ->
+       (* The server closed the connection.  Nothing much to do but give up. *)
+       IO.return()
 end
 
 

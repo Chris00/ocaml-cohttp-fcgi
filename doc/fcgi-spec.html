@@ -551,7 +551,7 @@ the server perform application and connection management:</p><p>
         The maximum number of concurrent requests this application
         will accept, e.g.
         <tt>"1"</tt> or <tt>"50"</tt>.<p>
-
+      <em>NOTE: This value is per application, not per connection.</em>
     </p></li><li><tt>FCGI_MPXS_CONNS</tt>:
         <tt>"0"</tt> if this application does not multiplex
         connections (i.e. handle concurrent requests over each
