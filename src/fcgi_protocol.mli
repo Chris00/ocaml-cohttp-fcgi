@@ -50,6 +50,7 @@ module type IO = sig
       calling {!write_from} have been written to the output channel [oc]. *)
 end
 
+
 (** Interface defining how to exchange records (the building blocks of
     the FastCGI protocol) between the server and the client. *)
 module type RecordIO = sig
@@ -102,7 +103,7 @@ module type RecordIO = sig
   val set_type : Bytes.t -> ty -> unit
   val set_id : Bytes.t -> int -> unit
 
-  val write_from : IO.oc -> Bytes.t -> int
+  val write_from : IO.oc -> Bytes.t -> data_len:int
                    -> (unit, [`Write_error]) result IO.t
   (** [write_from oc buf data_len] sends the FastCGI record in [buf]
        with data length [data_len] to [oc].  This function takes care

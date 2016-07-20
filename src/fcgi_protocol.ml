@@ -143,7 +143,7 @@ module Make_RecordIO(IO: IO) = struct
     assert(0 <= id && id <= 0xFFFF);
     BE.set_int16 buf 2 id
 
-  let write_from oc buf data_len =
+  let write_from oc buf ~data_len =
     assert(data_len <= 0xFFFF);
     if data_len <= 0 then IO.return(Ok()) (* nothing to do *)
     else (
