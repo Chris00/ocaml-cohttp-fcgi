@@ -159,6 +159,44 @@ module Make_RecordIO(IO: IO) = struct
     )
 end
 
+(** Gets the length of a name or value and the offset of the next
+    entry.  This new offset is set to [len] if the range [ofs] .. [ofs
+    + len - 1] is not large enough. *)
+let get_length buf ofs len =
+  let b = BE.get_uint8 buf ofs in
+  if b lsr 7 = 0 then (b, ofs + 1)
+  else if ofs + 3 >= len then (-1, len)
+  else (
+    let b2 = BE.get_uint8 buf (ofs + 1) in
+    let b10 = BE.get_uint16 buf (ofs + 2) in
+    let l = ((b land 0x7F) lsl 24) lor (b2 lsl 16) lor b10 in
+    (l, ofs + 4)
+  )
+
+(** Read the name-value pairs in buf.[ofs .. ofs+len-1] — assumed to
+    be a valid range.  If the lengths of the keys or values are
+    incompatible with the length of the range, return the keys so far.
+    FIXME: do we want to return an error?  The application may not do
+    much about it anyway. *)
+let rec map_name_value buf ofs len f nv =
+  if ofs >= len then nv
+  else (
+    let n_len, ofs = get_length buf ofs len in
+    if ofs >= len then nv
+    else (
+      let v_len, ofs = get_length buf ofs len in
+      let ofs_value = ofs + n_len in
+      let ofs_next = ofs_value + v_len in
+      if ofs_next > len then nv
+      else (
+        let name = String.uppercase_ascii(Bytes.sub_string buf ofs n_len) in
+        let value = Bytes.sub_string buf ofs_value v_len in
+        let nv = f name value :: nv in
+        map_name_value buf ofs_next len f nv
+      )
+    )
+  )
+
 
 module type CLIENT = sig
   module IO : IO
