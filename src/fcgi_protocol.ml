@@ -69,6 +69,9 @@ let ty_of_int = [| Unknown; Begin_request; Abort_Request; End_Request;
                    Params; Stdin; Stdout; Stderr; Data;
                    Get_values; Get_values_result; Unknown |]
 
+let ty_of_int i = if i <= 0 || i > 11 then Unknown
+                  else ty_of_int.(i)
+
 module Make_RecordIO(IO: IO) = struct
   module IO = IO
 
@@ -119,7 +122,7 @@ module Make_RecordIO(IO: IO) = struct
   let read_into ic data =
     really_read ic.ic ic.head ~ofs:0 8 >>=? fun () ->
     let ty = BE.get_uint8 ic.head 1 in
-    ic.ty <- (if ty <= 11 then ty_of_int.(ty) else Unknown);
+    ic.ty <- ty_of_int ty;
     ic.id <- BE.get_uint16 ic.head 2;
     let content_length = BE.get_uint16 ic.head 4 in
     let padding_length = BE.get_uint8 ic.head 6 in
