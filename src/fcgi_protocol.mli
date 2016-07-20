@@ -62,6 +62,9 @@ module type RecordIO = sig
             | Params | Stdin | Stdout | Stderr | Data
             | Get_values | Get_values_result | Unknown
 
+  val char_of_ty : ty -> char
+  (** Return the FastCGI char representing the record type. *)
+
   val ( >>=? ) :
     ('a, 'b) result IO.t -> ('a -> ('c, 'b) result IO.t) -> ('c, 'b) result IO.t
   (** [>>=?] is similar to [>>=] except that the errors are passed along. *)

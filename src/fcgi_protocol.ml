@@ -29,6 +29,7 @@ module type RecordIO = sig
   type ty = | Begin_request | Abort_Request | End_Request
             | Params | Stdin | Stdout | Stderr | Data
             | Get_values | Get_values_result | Unknown
+  val char_of_ty : ty -> char
 
   val ( >>=? ) :
     ('a, 'b) result IO.t -> ('a -> ('c, 'b) result IO.t) -> ('c, 'b) result IO.t
@@ -54,40 +55,35 @@ module type RecordIO = sig
                    -> (unit, [`Write_error]) result IO.t
 end
 
-type record_ty =
-  | Begin_request | Abort_Request | End_Request
-  | Params | Stdin | Stdout | Stderr | Data
-  | Get_values | Get_values_result | Unknown
-
-let char_of_ty = function
-  | Begin_request -> '\001'
-  | Abort_Request -> '\002'
-  | End_Request -> '\003'
-  | Params -> '\004'
-  | Stdin -> '\005'
-  | Stdout -> '\006'
-  | Stderr -> '\007'
-  | Data -> '\008'
-  | Get_values -> '\009'
-  | Get_values_result -> '\010'
-  | Unknown -> '\011'
-
-let ty_of_int = [| Unknown; Begin_request; Abort_Request; End_Request;
-                   Params; Stdin; Stdout; Stderr; Data;
-                   Get_values; Get_values_result; Unknown |]
-
-let ty_of_int i = if i <= 0 || i > 11 then Unknown
-                  else ty_of_int.(i)
-
 module Make_RecordIO(IO: IO) = struct
   module IO = IO
 
   let fcgi_version = '\001'
 
-  type ty = record_ty =
+  type ty =
     | Begin_request | Abort_Request | End_Request
     | Params | Stdin | Stdout | Stderr | Data
     | Get_values | Get_values_result | Unknown
+
+  let char_of_ty = function
+    | Begin_request -> '\001'
+    | Abort_Request -> '\002'
+    | End_Request -> '\003'
+    | Params -> '\004'
+    | Stdin -> '\005'
+    | Stdout -> '\006'
+    | Stderr -> '\007'
+    | Data -> '\008'
+    | Get_values -> '\009'
+    | Get_values_result -> '\010'
+    | Unknown -> '\011'
+
+  let ty_of_int = [| Unknown; Begin_request; Abort_Request; End_Request;
+                     Params; Stdin; Stdout; Stderr; Data;
+                     Get_values; Get_values_result; Unknown |]
+
+  let ty_of_int i = if i <= 0 || i > 11 then Unknown
+                    else ty_of_int.(i)
 
   let ( >>= ) = IO.( >>= )
 
