@@ -35,24 +35,22 @@ module type RecordIO = sig
     ('a, 'b) result IO.t -> ('a -> ('c, 'b) result IO.t) -> ('c, 'b) result IO.t
 
   type ic
+  val make_input : IO.ic -> ic
   type head = {
       ty: ty;
       id: int;
       content_length: int;
       padding_length: int;
     }
-  val make_input : IO.ic -> ic
+  val read_head : ic -> (head, [> `EOF]) result IO.t
+  val read_into : ic -> head -> Bytes.t -> (unit, [> `EOF]) result IO.t
   val create_data : unit -> Bytes.t
-  val read_head : ic -> (head, [`EOF]) result IO.t
-  val read_into : ic -> head -> Bytes.t -> (unit, [`EOF]) result IO.t
-  val input_type : ic -> ty
-  val id : ic -> int
 
   val create_record : unit -> Bytes.t
   val set_type : Bytes.t -> ty -> unit
   val set_id : Bytes.t -> int -> unit
   val write_from : IO.oc -> Bytes.t -> content_length:int
-                   -> (unit, [`Write_error]) result IO.t
+                   -> (unit, [> `Write_error]) result IO.t
 end
 
 module Make_RecordIO(IO: IO) = struct

@@ -85,10 +85,10 @@ module type RecordIO = sig
       padding_length: int; (** length of the padding *)
     }
 
-  val read_head : ic -> (head, [`EOF]) result IO.t
+  val read_head : ic -> (head, [> `EOF]) result IO.t
   (** Read the "head" of the next FastCGI record. *)
 
-  val read_into : ic -> head -> Bytes.t -> (unit, [`EOF]) result IO.t
+  val read_into : ic -> head -> Bytes.t -> (unit, [> `EOF]) result IO.t
   (** [read ic head data] gets the data of the next record on [ic]
       whose characteristics are given by [head] and puts it into
       [data].  [data] is supposed be long enough to hold any incoming
@@ -110,7 +110,7 @@ module type RecordIO = sig
   val set_id : Bytes.t -> int -> unit
 
   val write_from : IO.oc -> Bytes.t -> content_length:int
-                   -> (unit, [`Write_error]) result IO.t
+                   -> (unit, [> `Write_error]) result IO.t
   (** [write_from oc buf data_len] sends the FastCGI record in [buf]
        with data length [data_len] to [oc].  This function takes care
        of writing the length to [buf] and setting the proper amount of
