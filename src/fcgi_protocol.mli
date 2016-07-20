@@ -122,7 +122,6 @@ module type CLIENT = sig
 
   val handle_connection :
     ?max_reqs: int ->
-    ?values:(string -> string option) ->
     (Cohttp.Request.t -> Cohttp_lwt_body.t ->
      (Cohttp.Response.t * Cohttp_lwt_body.t) IO.t) ->
     IO.ic -> IO.oc -> unit IO.t
