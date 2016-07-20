@@ -57,7 +57,7 @@ module type RecordIO = sig
   module IO : IO
 
   (** FastCGI record types. *)
-  type ty = | Management | Begin_request | Abort_Request | End_Request
+  type ty = | Begin_request | Abort_Request | End_Request
             | Params | Stdin | Stdout | Stderr | Data
             | Get_values | Get_values_result | Unknown
 
