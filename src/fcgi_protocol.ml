@@ -36,7 +36,7 @@ module type RecordIO = sig
 
   type ic
   val make_input : IO.ic -> ic
-  type head = {
+  type head = private {
       ty: ty;
       id: int;
       content_length: int;
@@ -177,7 +177,7 @@ let get_length buf ofs len =
     incompatible with the length of the range, return the keys so far.
     FIXME: do we want to return an error?  The application may not do
     much about it anyway. *)
-let rec map_name_value buf ofs len f nv =
+let rec add_name_value buf ~ofs len f nv =
   if ofs >= len then nv
   else (
     let n_len, ofs = get_length buf ofs len in
@@ -191,7 +191,7 @@ let rec map_name_value buf ofs len f nv =
         let name = String.uppercase(Bytes.sub_string buf ofs n_len) in
         let value = Bytes.sub_string buf ofs_value v_len in
         let nv = f name value :: nv in
-        map_name_value buf ofs_next len f nv
+        add_name_value buf ofs_next len f nv
       )
     )
   )
@@ -200,7 +200,7 @@ let rec map_name_value buf ofs len f nv =
     position [ofs] and return the new offset.  Raise an exception if
     [buf] is not long enough or if [length] does not fit the FastCGI
     format. *)
-let encode_length_exn buf ofs len length =
+let encode_length_exn buf ~ofs len length =
   if length < 0x80 then (
     if ofs >= len then failwith "encode_length_exn";
     BE.set_int8 buf ofs length;
@@ -217,11 +217,11 @@ let encode_length_exn buf ofs len length =
 (** Encode the name-value pair [(k,v)] to [buf] at position [ofs] and
     return the offset for the next value.  If there is not enough
     space in [buf], an exception is raised. *)
-let add_name_val_exn buf ofs len k v =
+let add_name_val_exn buf ~ofs len k v =
   let k_len = String.length k in
   let v_len = String.length v in
-  let ofs = encode_length_exn buf ofs len k_len in
-  let ofs = encode_length_exn buf ofs len v_len in
+  let ofs = encode_length_exn buf ~ofs len k_len in
+  let ofs = encode_length_exn buf ~ofs len v_len in
   let v_ofs = ofs + k_len in
   let next_ofs = v_ofs + v_len in
   if next_ofs > len then failwith "add_name_val_exn"
@@ -263,26 +263,26 @@ module Client(P: RecordIO) = struct
   (* Minimal capabilities. *)
   let default_config = { max_conns = 1;  max_reqs = 1;  mpxs_conns = false }
 
-  let rec set_config_pairs config nv buf ofs len =
+  let rec set_config_pairs config nv buf ~ofs len =
     match nv with
     | name :: tl ->
        (try
           if String.equal name "FCGI_MAX_CONNS" then
-            let ofs = add_name_val_exn buf ofs len "FCGI_MAX_CONNS"
+            let ofs = add_name_val_exn buf ~ofs len "FCGI_MAX_CONNS"
                         (string_of_int config.max_conns) in
-            set_config_pairs config tl buf ofs len
+            set_config_pairs config tl buf ~ofs len
           else if String.equal name "FCGI_MAX_REQS" then
-            let ofs = add_name_val_exn buf ofs len "FCGI_MAX_REQS"
+            let ofs = add_name_val_exn buf ~ofs len "FCGI_MAX_REQS"
                         (string_of_int config.max_reqs) in
-            set_config_pairs config tl buf ofs len
+            set_config_pairs config tl buf ~ofs len
           else if String.equal name "FCGI_MPXS_CONNS" then
-            let ofs = add_name_val_exn buf ofs len "FCGI_MPXS_CONNS"
+            let ofs = add_name_val_exn buf ~ofs len "FCGI_MPXS_CONNS"
                         (if config.mpxs_conns then "1" else "0") in
-            set_config_pairs config tl buf ofs len
+            set_config_pairs config tl buf ~ofs len
           else (* skip not understood name *)
-            set_config_pairs config tl buf ofs len
+            set_config_pairs config tl buf ~ofs len
         with _ -> (* problems with name-value pair.  Skip it *)
-          set_config_pairs config tl buf ofs len)
+          set_config_pairs config tl buf ~ofs len)
     | [] -> ofs
 
   let keep_name name _ = name

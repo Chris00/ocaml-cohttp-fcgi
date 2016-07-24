@@ -78,10 +78,10 @@ module type RecordIO = sig
   (** [make_input ic] allocates the resources to read FastCGI "heads"
       of records on [ic]. *)
 
-  type head = {
+  type head = private {
       ty: ty;  (** FastCGI record type *)
-      id: int; (** FastCGI record ID (0 = management record) *)
-      content_length: int;  (** length of the content of the record *)
+      id: int; (** FastCGI record ID ∈ {0,1,...,0xFFFF} (0 = management) *)
+      content_length: int; (** length of the content of the record *)
       padding_length: int; (** length of the padding *)
     }
 
