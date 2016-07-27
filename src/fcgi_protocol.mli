@@ -139,8 +139,10 @@ module type CLIENT = sig
                             concurrent requests over each connection. *)
     }
 
+  val default_config : config
+
   val handle_connection :
-    ?config: config ->
+    config ->
     (Cohttp.Request.t -> Cohttp_lwt_body.t ->
      (Cohttp.Response.t * Cohttp_lwt_body.t) IO.t) ->
     IO.ic -> IO.oc -> unit IO.t

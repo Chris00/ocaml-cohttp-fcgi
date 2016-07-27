@@ -241,8 +241,10 @@ module type CLIENT = sig
       mpxs_conns: bool;
     }
 
+  val default_config : config
+
   val handle_connection :
-    ?config: config ->
+    config ->
     (Cohttp.Request.t -> Cohttp_lwt_body.t ->
      (Cohttp.Response.t * Cohttp_lwt_body.t) IO.t) ->
     IO.ic -> IO.oc -> unit IO.t
@@ -329,7 +331,7 @@ module Client(P: RecordIO) = struct
       handle_connection_loop config f ic oc buf
     )
 
-  let handle_connection ?(config=default_config) f ic oc =
+  let handle_connection config f ic oc =
     let ic = P.make_input ic in
     let buf = P.create_record() in
     handle_connection_loop config f ic oc buf >>= function
