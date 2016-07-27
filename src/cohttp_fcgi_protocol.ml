@@ -1,4 +1,4 @@
-(* File: fcgi_protocol.ml
+(* File: cohttp_fcgi_protocol.ml
 
    Copyright (C) 2016-
 

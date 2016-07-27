@@ -29,8 +29,8 @@ Flag async_kernel
 
 Library "cohttp_fcgi"
   Path:		src
-  Modules:      Fcgi_protocol, Cohttp_fcgi_lwt_unix, Cohttp_fcgi_async
-  BuildDepends: cohttp, bytes, result, ocplib-endian, lwt, async, threads
+  Modules:      Cohttp_fcgi_protocol
+  BuildDepends: cohttp, bytes, result, ocplib-endian
 
 Library "cohttp_fcgi_lwt_unix"
   Build$:       flag(lwt_unix)

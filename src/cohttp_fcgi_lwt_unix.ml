@@ -40,7 +40,7 @@ module IO = struct
   let create_pipe () = () (* FIXME *)
 end
 
-module Record = Fcgi_protocol.Make_RecordIO(IO)
+module Record = Cohttp_fcgi_protocol.Make_RecordIO(IO)
 
 
 module type REQUEST = sig
@@ -49,7 +49,7 @@ module type REQUEST = sig
 end
 
 module Client = struct
-  include Fcgi_protocol.Client(Record)
+  include Cohttp_fcgi_protocol.Client(Record)
 
   let fcgi_web_server_addrs =
     try
