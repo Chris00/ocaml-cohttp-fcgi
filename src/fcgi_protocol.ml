@@ -174,25 +174,24 @@ let get_length buf ofs len =
   )
 
 (** Read the name-value pairs in buf.[ofs .. ofs+len-1] — assumed to
-    be a valid range.  If the lengths of the keys or values are
-    incompatible with the length of the range, return the keys so far.
-    FIXME: do we want to return an error?  The application may not do
-    much about it anyway. *)
-let rec add_name_value buf ~ofs len f nv =
-  if ofs >= len then nv
+    be a valid range.  FIXME: If the lengths of the keys or values are
+    too large for the range, that means that the rest of the key or
+    value will be given on the next name-value record. *)
+let rec fold_name_value buf ~ofs len f acc =
+  if ofs >= len then acc
   else (
     let n_len, ofs = get_length buf ofs len in
-    if ofs >= len then nv
+    if ofs >= len then acc
     else (
       let v_len, ofs = get_length buf ofs len in
       let ofs_value = ofs + n_len in
       let ofs_next = ofs_value + v_len in
-      if ofs_next > len then nv
+      if ofs_next > len then acc
       else (
-        let name = String.uppercase(Bytes.sub_string buf ofs n_len) in
+        let name = Bytes.sub_string buf ofs n_len in
         let value = Bytes.sub_string buf ofs_value v_len in
-        let nv = f name value :: nv in
-        add_name_value buf ofs_next len f nv
+        let acc = f name value acc in
+        fold_name_value buf ~ofs:ofs_next len f acc
       )
     )
   )
@@ -264,9 +263,29 @@ module Client(P: RecordIO) = struct
   (* Minimal capabilities. *)
   let default_config = { max_conns = 1;  max_reqs = 1;  mpxs_conns = false }
 
+  (* Resources to handle a request. *)
+  type request_state = Params | Body
+
+  type request = {
+      mutable req: Cohttp.Request.t;
+      mutable state: request_state;
+      body: Buffer.t; (* FIXME: versatility of storage must be implemented. *)
+    }
+
+  (* State of an accept()ed connection, managing concurrent requests. *)
+  type t = {
+      ic: P.ic;
+      oc: IO.oc;
+      buf: Bytes.t; (* Main loop buffer *)
+      mutable n_reqs: int; (* Number of requests processed on this connection *)
+      mutable close_conn: bool; (* whether the client should close the conn *)
+      req: request ID.map; (* resources to handle requests *)
+    }
+
   let rec set_config_pairs config nv buf ~ofs len =
     match nv with
     | name :: tl ->
+       let name = String.uppercase name in
        (try
           if String.equal name "FCGI_MAX_CONNS" then
             let ofs = add_name_val_exn buf ~ofs len "FCGI_MAX_CONNS"
@@ -286,18 +305,18 @@ module Client(P: RecordIO) = struct
           set_config_pairs config tl buf ~ofs len)
     | [] -> ofs
 
-  let keep_name name _ = name
+  let add_name name _ acc = name :: acc
 
-  let reply_to_get_values config head ic oc buf =
-    P.read_into ic head buf >>=? fun () ->
-    let nv = map_name_value buf 0 head.P.content_length keep_name [] in
-    P.set_id buf management_id;
-    P.set_type buf P.Get_values_result;
-    let ofs = set_config_pairs config nv buf 8 (Bytes.length buf) in
-    P.write_from oc buf ~content_length:(ofs - 8)
+  let reply_to_get_values t config head =
+    P.read_into t.ic head t.buf >>=? fun () ->
+    let nv = fold_name_value t.buf ~ofs:0 head.P.content_length add_name [] in
+    P.set_id t.buf management_id;
+    P.set_type t.buf P.Get_values_result;
+    let ofs = set_config_pairs config nv t.buf 8 (Bytes.length t.buf) in
+    P.write_from t.oc t.buf ~content_length:(ofs - 8)
 
-  let rec handle_connection_loop config f ic oc buf =
-    P.read_head ic >>=? fun head ->
+  let rec handle_connection_loop t config f =
+    P.read_head t.ic >>=? fun head ->
     if head.P.id = 0 then (
       (* Management record *)
       match head.P.ty with
