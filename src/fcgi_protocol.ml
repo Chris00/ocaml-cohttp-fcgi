@@ -318,24 +318,126 @@ module Client(P: RecordIO) = struct
     let ofs = set_config_pairs config nv t.buf 8 (Bytes.length t.buf) in
     P.write_from t.oc t.buf ~content_length:(ofs - 8)
 
+  let send_unknown_type t ty =
+    P.set_id t.buf management_id;
+    P.set_type t.buf P.Unknown;
+    Bytes.set t.buf 8 (P.char_of_ty ty);
+    P.write_from t.oc t.buf ~content_length:8
+
+  type protocol_status = Request_complete
+                       | Cant_mpx_conn
+                       | Overloaded
+                       | Unknown_role
+
+  let send_end_request t ~id exit_code protocol_status =
+    P.set_id t.buf id;
+    P.set_type t.buf P.End_Request;
+    BE.set_int32 t.buf 8 exit_code;
+    Bytes.set t.buf 12 (match protocol_status with
+                        | Request_complete -> '\000'
+                        | Cant_mpx_conn -> '\001'
+                        | Overloaded -> '\002'
+                        | Unknown_role -> '\003');
+    P.write_from t.oc t.buf ~content_length:0
+
+  let handle_begin_request t head =
+    P.read_into t.ic head t.buf >>=? fun () ->
+    let close_conn = (BE.get_uint8 t.buf 2) land 0x1 = 0 in
+    if BE.get_uint16 t.buf 0 = 1 (* Responder *) then (
+      (* Setup some structures to handle the following records of this
+         request, i.e., with the same ID as this one. *)
+      t.n_reqs <- t.n_reqs + 1;
+      t.close_conn <- t.close_conn || close_conn;
+      (* If a previous request with the same ID exists, the server
+         should not have send a begin_request with the same ID.  Drop
+         this one with no warning. *)
+      if not(ID.exists t.req head.P.id) then (
+        let req = { Cohttp.Request.headers = Cohttp.Header.init();
+                    meth = `GET;
+                    resource = "";
+                    version = `HTTP_1_1;
+                    encoding = Cohttp.Transfer.Unknown } in
+        let empty_request = { req;
+                              state = Params;
+                              body = Buffer.create 1024 } in
+        ID.add t.req head.P.id empty_request
+      );
+      IO.return(Ok()))
+    else
+      (* Authorizer and filter roles not supported at the moment (very
+         few web servers implement them). *)
+      send_end_request t head.P.id 0l Unknown_role
+
+  let handle_params t head f =
+    P.read_into t.ic head t.buf >>=? fun () ->
+    if ID.exists t.req head.P.id then
+      let r = ID.find_exn t.req head.P.id in
+      if r.state = Params then
+        if head.P.content_length <> 0 then (
+          (* FIXME: the params name & values may be split across
+             several records. *)
+          let h = r.req.Cohttp.Request.headers in
+          let h = fold_name_value t.buf ~ofs:0 head.P.content_length
+                    (fun n v h -> Cohttp.Header.add h n v) h in
+          r.req <- { r.req with Cohttp.Request.headers = h };
+          IO.return(Ok())
+        )
+        else ( (* Stream of parameters closed.  Launch the callback. *)
+          r.state <- Body;
+          (* FIXME: should connect to a pipe for the body. *)
+          f r.req `Empty >>= fun (resp, body) ->
+          (* FIXME: write response. *)
+          IO.return(Ok())
+        )
+      else (* Not expecting params for that ID.  Drop record. *)
+        IO.return(Ok())
+    else
+      (* Cannot process params when no Begin_request was sent.  Drop
+         the record with no warning. *)
+      IO.return(Ok())
+
   let rec handle_connection_loop t config f =
     P.read_head t.ic >>=? fun head ->
     if head.P.id = 0 then (
       (* Management record *)
       match head.P.ty with
       | P.Get_values ->
-         reply_to_get_values config head ic oc buf >>=? fun () ->
-         handle_connection_loop config f ic oc buf
-      | _ -> send_unknown_type oc buf head.P.ty
+         reply_to_get_values t config head >>=? fun () ->
+         handle_connection_loop t config f
+      | _ -> send_unknown_type t head.P.ty
     )
     else (
-      handle_connection_loop config f ic oc buf
+      match head.P.ty with
+      | P.Begin_request ->
+         handle_begin_request t head >>=? fun () ->
+         handle_connection_loop t config f
+      | P.Abort_Request ->
+         
+         handle_connection_loop t config f
+      | P.Params ->
+         handle_params t head f >>=? fun () ->
+         handle_connection_loop t config f
+      | P.Stdin ->
+         
+         handle_connection_loop t config f
+      | P.Data ->
+         
+         handle_connection_loop t config f
+      | P.End_Request | P.Stdout | P.Stderr | P.Get_values
+        | P.Get_values_result | P.Unknown ->
+         (* As a client, we should not receive those request types. *)
+         (* Read and discard data of the record: *)
+         P.read_into t.ic head t.buf >>=? fun () ->
+         send_unknown_type t head.P.ty >>=? fun () ->
+         handle_connection_loop t config f
     )
 
   let handle_connection config f ic oc =
     let ic = P.make_input ic in
     let buf = P.create_record() in
-    handle_connection_loop config f ic oc buf >>= function
+    let t = { ic; oc; buf;  n_reqs = 0;  close_conn = false;
+              req = ID.empty() } in
+    handle_connection_loop t config f >>= function
     | Ok _ -> assert false (* should not exit normally *)
     | Error(`EOF | `Write_error) ->
        (* The server closed the connection.  Nothing much to do but give up. *)
@@ -358,12 +460,26 @@ module Server(P: RecordIO) = struct
   type t = {
       ic: P.ic;
       oc: IO.oc;
+      buf: Bytes.t;  (* buffer for the main handling *)
+      keep_conn: bool;
     }
-
 
   let handle_connection ?(keep_conn=false) ic oc =
     let ic = P.make_input ic in
-    { ic; oc }
+    let buf = P.create_record() in
+    { ic; oc; buf; keep_conn }
+
+  let send_begin_request t ~id =
+    P.set_id t.buf id;
+    P.set_type t.buf P.Begin_request;
+    BE.set_int16 t.buf 8 1; (* Responder role; FIXME: support other roles? *)
+    Bytes.set t.buf 10 (if t.keep_conn then '\001' else '\000');
+    P.write_from t.oc t.buf ~content_length:8
+
+  let send_abort_request t ~id =
+    P.set_id t.buf id;
+    P.set_type t.buf P.Abort_Request;
+    P.write_from t.oc t.buf ~content_length:0
 
   let get_values t names =
     IO.return []

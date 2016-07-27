@@ -172,7 +172,10 @@ module type SERVER = sig
   (** [make_connection ic oc] create the resources to speak to a
       FastCGI application through the channels [ic] and [oc].
 
-      @param keep_conn *)
+      @param keep_conn if [true] (the default) it is the role of the
+      server to close the connection.  If [false], the application
+      will be notified that it should close the connection after the
+      request is complete. *)
 
   val get_values : t -> string list -> (string * string) list IO.t
   (** [get_values t names] send a request the the FastCGI client to
