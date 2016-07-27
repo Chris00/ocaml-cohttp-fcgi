@@ -26,6 +26,11 @@ module type IO = sig
   val return : 'a -> 'a t
   (** [return a] constructs a constant IO value.  *)
 
+  val all : unit t list -> unit t
+  (** [all l] waits for all "threads" in [l] to terminate.  If one of
+      the threads fails, then [all l] must fail with the same
+      exception as the first one to terminate.  *)
+
   type ic
   (** Represents an input channel.  It is assumed that it is buffered
       so, say, reading small amounts of bytes is not overly costly. *)
