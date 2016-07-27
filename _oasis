@@ -11,10 +11,43 @@ Plugins:     META (0.4), StdFiles (0.4)
 BuildTools:   ocamlbuild
 AlphaFeatures: ocamlbuild_more_args
 
+Flag all
+  Description: Build all variations of this library
+  Default: false
+
+Flag lwt
+  Description: Say that the Lwt library is present
+  Default$:    flag(all)
+
+Flag lwt_unix
+  Description: Say that the Lwt_unix library is present
+  Default$:    flag(all)
+
+Flag async_kernel
+  Description: Say that the Async_kernel library is present
+  Default$:    flag(all)
+
 Library "cohttp_fcgi"
   Path:		src
-  Modules:      Fcgi_protocol
-  BuildDepends: cohttp, bytes, result, ocplib-endian
+  Modules:      Fcgi_protocol, Cohttp_fcgi_lwt_unix, Cohttp_fcgi_async
+  BuildDepends: cohttp, bytes, result, ocplib-endian, lwt, async, threads
+
+Library "cohttp_fcgi_lwt_unix"
+  Build$:       flag(lwt_unix)
+  Path:		src
+  Modules:      Cohttp_fcgi_lwt_unix
+  BuildDepends: cohttp_fcgi, lwt
+  Findlibname:   lwt_unix
+  FindlibParent: cohttp_fcgi
+
+Library "cohttp_fcgi_async"
+  Build$:       flag(async_kernel)
+  Path:		src
+  Modules:      Cohttp_fcgi_async
+  BuildDepends: cohttp_fcgi, async, threads
+  Findlibname:   async
+  FindlibParent: cohttp_fcgi
+
 
 
 Document API
