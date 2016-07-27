@@ -7,6 +7,7 @@
  *)
 
 module BE = EndianBytes.BigEndian_unsafe
+module ID = Cohttp_fcgi_ID
 open Result
 
 
